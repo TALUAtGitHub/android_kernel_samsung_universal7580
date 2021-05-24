@@ -5931,7 +5931,7 @@ static int sec_bat_parse_dt(struct device *dev,
 	if (ret)
 		pr_info("%s : Charging reset time is Empty\n", __func__);
 
-		ret = of_property_read_u32(np,
+	ret = of_property_read_u32(np,
 			"battery,expired_time", &temp);
 	if (ret) {
 		pr_info("expired time is empty\n");
