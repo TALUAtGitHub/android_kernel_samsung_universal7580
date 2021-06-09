@@ -37,6 +37,7 @@ struct s2mpu03_info {
 	int num_regulators;
 	struct sec_pmic_dev *iodev;
 	bool g3d_en;
+	int g3d_pin;
 	const char *g3d_en_addr;
 	const char *g3d_en_pin;
 };
@@ -81,7 +82,8 @@ static int s2m_enable(struct regulator_dev *rdev)
 	int reg_id = rdev_get_id(rdev);
 
 	/* disregard BUCK4 enable */
-	if (reg_id == S2MPU03_BUCK4 && s2mpu03->g3d_en)
+	if (reg_id == S2MPU03_BUCK4 && s2mpu03->g3d_en &&
+		gpio_is_valid(s2mpu03->g3d_pin))
 		return 0;
 
 	return sec_reg_update(s2mpu03->iodev, rdev->desc->enable_reg,
@@ -96,7 +98,8 @@ static int s2m_disable_regmap(struct regulator_dev *rdev)
 	unsigned int val;
 
 	/* disregard BUCK4 disable */
-	if (reg_id == S2MPU03_BUCK4 && s2mpu03->g3d_en)
+	if (reg_id == S2MPU03_BUCK4 && s2mpu03->g3d_en &&
+		gpio_is_valid(s2mpu03->g3d_pin))
 		return 0;
 
 	if (rdev->desc->enable_is_inverted)
@@ -114,7 +117,8 @@ static int s2m_is_enabled_regmap(struct regulator_dev *rdev)
 	int ret, reg_id = rdev_get_id(rdev);
 	unsigned int val;
 	/* BUCK4 is controlled by g3d gpio */
-	if (reg_id == S2MPU03_BUCK4 && s2mpu03->g3d_en) {
+	if (reg_id == S2MPU03_BUCK4 && s2mpu03->g3d_en &&
+		gpio_is_valid(s2mpu03->g3d_pin)) {
 		if ((__raw_readl(EXYNOS_PMU_G3D_STATUS) &
 			LOCAL_PWR_CFG) == LOCAL_PWR_CFG)
 			return 1;
@@ -268,6 +272,11 @@ static int s2m_set_voltage_time_sel(struct regulator_dev *rdev,
 
 void g3d_pin_config_set()
 {
+	if (!static_info->g3d_en || !gpio_is_valid(static_info->g3d_pin)) {
+		pr_warn("%s: g3d pin ctrl failed\n", __func__);
+		return;
+	}
+
 	if (!static_info->g3d_en_addr || !static_info->g3d_en_pin) {
 		pr_warn("%s: g3d pin ctrl gpio is invalid\n", __func__);
 		return;
@@ -350,6 +359,18 @@ static struct regulator_ops s2mpu03_buck_ops = {
 
 static struct regulator_desc regulators[S2MPU03_REGULATOR_MAX] = {
 	/* name, id, ops, min_uv, uV_step, vsel_reg, enable_reg */
+	BUCK_DESC("BUCK1", _BUCK(1), &_buck_ops(), _BUCK(_MIN1), _BUCK(_STEP1),
+			_REG(_B1CTRL2), _REG(_B1CTRL1), _TIME(_BUCK1)),
+	BUCK_DESC("BUCK2", _BUCK(2), &_buck_ops(), _BUCK(_MIN1), _BUCK(_STEP1),
+			_REG(_B2CTRL2), _REG(_B2CTRL1), _TIME(_BUCK2)),
+	BUCK_DESC("BUCK3", _BUCK(3), &_buck_ops(), _BUCK(_MIN1), _BUCK(_STEP1),
+			_REG(_B3CTRL2), _REG(_B3CTRL1), _TIME(_BUCK3)),
+	BUCK_DESC("BUCK4", _BUCK(4), &_buck_ops(), _BUCK(_MIN1), _BUCK(_STEP1),
+			_REG(_B4CTRL2), _REG(_B4CTRL1), _TIME(_BUCK4)),
+	BUCK_DESC("BUCK5", _BUCK(5), &_buck_ops(), _BUCK(_MIN2), _BUCK(_STEP2),
+			_REG(_B5CTRL2), _REG(_B5CTRL1), _TIME(_BUCK5)),
+	BUCK_DESC("BUCK6", _BUCK(6), &_buck_ops(), _BUCK(_MIN2), _BUCK(_STEP2),
+			_REG(_B6CTRL2), _REG(_B6CTRL1), _TIME(_BUCK6)),
 	LDO_DESC("LDO1", _LDO(1), &_ldo_ops(), _LDO(_MIN1), _LDO(_STEP1),
 			_REG(_L1CTRL), _REG(_L1CTRL), _TIME(_LDO)),
 	LDO_DESC("LDO2", _LDO(2), &_ldo_ops(), _LDO(_MIN2), _LDO(_STEP2),
@@ -406,18 +427,6 @@ static struct regulator_desc regulators[S2MPU03_REGULATOR_MAX] = {
 			_REG(_L38CTRL), _REG(_L38CTRL), _TIME(_LDO)),
 	LDO_DESC("LDO39", _LDO(39), &_ldo_ops(), _LDO(_MIN1), _LDO(_STEP2),
 			_REG(_L39CTRL), _REG(_L39CTRL), _TIME(_LDO)),
-	BUCK_DESC("BUCK1", _BUCK(1), &_buck_ops(), _BUCK(_MIN1), _BUCK(_STEP1),
-			_REG(_B1CTRL2), _REG(_B1CTRL1), _TIME(_BUCK1)),
-	BUCK_DESC("BUCK2", _BUCK(2), &_buck_ops(), _BUCK(_MIN1), _BUCK(_STEP1),
-			_REG(_B2CTRL2), _REG(_B2CTRL1), _TIME(_BUCK2)),
-	BUCK_DESC("BUCK3", _BUCK(3), &_buck_ops(), _BUCK(_MIN1), _BUCK(_STEP1),
-			_REG(_B3CTRL2), _REG(_B3CTRL1), _TIME(_BUCK3)),
-	BUCK_DESC("BUCK4", _BUCK(4), &_buck_ops(), _BUCK(_MIN1), _BUCK(_STEP1),
-			_REG(_B4CTRL2), _REG(_B4CTRL1), _TIME(_BUCK4)),
-	BUCK_DESC("BUCK5", _BUCK(5), &_buck_ops(), _BUCK(_MIN2), _BUCK(_STEP2),
-			_REG(_B5CTRL2), _REG(_B5CTRL1), _TIME(_BUCK5)),
-	BUCK_DESC("BUCK6", _BUCK(6), &_buck_ops(), _BUCK(_MIN2), _BUCK(_STEP2),
-			_REG(_B6CTRL2), _REG(_B6CTRL1), _TIME(_BUCK6)),
 };
 
 #ifdef CONFIG_OF
@@ -556,30 +565,41 @@ static int s2mpu03_pmic_probe(struct platform_device *pdev)
 
 	s2mpu03->num_regulators = pdata->num_regulators;
 
-	if (pdata->g3d_en) {
-		g3d_pin_config_set();
-		/* for buck4 gpio control, disable i2c control */
-		ret = sec_reg_update(iodev, S2MPU03_REG_B4CTRL1,
-					0x00, 0xC0);
-		if (ret) {
-			dev_err(&pdev->dev, "buck4 gpio ctrl err\n");
+	if (gpio_is_valid(pdata->g3d_pin)) {
+		ret = devm_gpio_request(&pdev->dev, pdata->g3d_pin,
+					"S2MPU03 G3D_PIN");
+		if (ret < 0)
 			return ret;
+
+		s2mpu03->g3d_pin = pdata->g3d_pin;
+
+		if (pdata->g3d_en) {
+			g3d_pin_config_set();
+			/* for buck4 gpio control, disable i2c control */
+			ret = sec_reg_update(iodev, S2MPU03_REG_B4CTRL1,
+						0x00, 0xC0);
+			if (ret) {
+				dev_err(&pdev->dev, "buck4 gpio ctrl err\n");
+				return ret;
+			}
+			/* sync buck4 and ldo10 */
+			ret = sec_reg_update(iodev, S2MPU03_REG_LDO_EFUSE,
+						0x10, 0x10);
+			if (ret) {
+				dev_err(&pdev->dev, "regulator sync en err\n");
+				return ret;
+			}
+			/* sync buck4 and ldo10 */
+			ret = sec_reg_update(iodev, S2MPU03_REG_L10CTRL,
+						0x00, 0xC0);
+			if (ret) {
+				dev_err(&pdev->dev, "regulator sync en err\n");
+				return ret;
+			}
 		}
-		/* sync buck4 and ldo10 */
-		ret = sec_reg_update(iodev, S2MPU03_REG_LDO_EFUSE,
-					0x10, 0x10);
-		if (ret) {
-			dev_err(&pdev->dev, "regulator sync en err\n");
-			return ret;
-		}
-		/* sync buck4 and ldo10 */
-		ret = sec_reg_update(iodev, S2MPU03_REG_L10CTRL,
-					0x00, 0xC0);
-		if (ret) {
-			dev_err(&pdev->dev, "regulator sync en err\n");
-			return ret;
-		}
-	}
+	} else
+		dev_err(&pdev->dev, "g3d pin is not valid\n");
+
 
 	/* SELMIF : Buck3,LDO4,6,7,8 controlled by PWREN_MIF */
 	ret = sec_reg_update(iodev, S2MPU03_REG_SELMIF, 0x3D, 0x7F);
